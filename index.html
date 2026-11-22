@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Motion AI - 3D Motion Graphics</title>
+<style>
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:#000;font-family:system-ui,sans-serif;color:#e2e8f0;}
+  #canvas{display:block;width:100%;height:100%;}
+  #ui{position:fixed;top:12px;left:12px;background:rgba(0,0,0,.5);padding:10px 12px;border-radius:10px;backdrop-filter:blur(8px);max-width:380px;}
+  #ui h1{margin:0 0 6px;font-size:16px;}
+  #ui input{width:260px;padding:6px 8px;border-radius:6px;border:1px solid #333;background:#111;color:#e2e8f0;}
+  #ui button{padding:6px 10px;border-radius:6px;border:none;background:#a855f7;color:#fff;cursor:pointer;margin-left:4px;}
+  #ui small{display:block;margin-top:6px;color:#94a3b8;font-size:11px;}
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="ui">
+  <h1>Motion AI</h1>
+  <input id="cmd" placeholder="Describe a motion, e.g. spiral bloom 2000" />
+  <button id="send">Generate</button>
+  <small>High-quality 3D motion graphics with AI-driven parameters.</small>
+</div>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+
+const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
+camera.position.set(0, 0, 12);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+composer.addPass(bloom);
+
+// Particle system
+let particles = null;
+function buildParticles(count = 1500, mode = 'spiral') {
+  if (particles) scene.remove(particles);
+  const geo = new THREE.BufferGeometry();
+  const pos = new Float32Array(count * 3);
+  const col = new Float32Array(count * 3);
+  for (let i = 0; i < count; i++) {
+    let x, y, z;
+    if (mode === 'spiral') {
+      const t = i / count * Math.PI * 8;
+      const r = 0.5 + i / count * 4;
+      x = Math.cos(t) * r;
+      y = (i / count - 0.5) * 6;
+      z = Math.sin(t) * r;
+    } else if (mode === 'sphere') {
+      const u = Math.random(), v = Math.random();
+      const theta = 2 * Math.PI * u;
+      const phi = Math.acos(2 * v - 1);
+      const r = 4;
+      x = r * Math.sin(phi) * Math.cos(theta);
+      y = r * Math.sin(phi) * Math.sin(theta);
+      z = r * Math.cos(phi);
+    } else {
+      x = (Math.random() - 0.5) * 10;
+      y = (Math.random() - 0.5) * 10;
+      z = (Math.random() - 0.5) * 10;
+    }
+    pos[i * 3] = x; pos[i * 3 + 1] = y; pos[i * 3 + 2] = z;
+    const c = new THREE.Color().setHSL((i / count), 0.8, 0.6);
+    col[i * 3] = c.r; col[i * 3 + 1] = c.g; col[i * 3 + 2] = c.b;
+  }
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const mat = new THREE.PointsMaterial({ size: 0.08, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false });
+  particles = new THREE.Points(geo, mat);
+  scene.add(particles);
+}
+buildParticles(1500, 'spiral');
+
+document.getElementById('send').addEventListener('click', () => {
+  const text = document.getElementById('cmd').value.toLowerCase();
+  let count = 1500, mode = 'spiral', bloomStr = 1.5;
+  const m = text.match(/(\d+)/);
+  if (m) count = Math.min(5000, parseInt(m[1]));
+  if (text.includes('sphere')) mode = 'sphere';
+  if (text.includes('random')) mode = 'random';
+  if (text.includes('spiral')) mode = 'spiral';
+  if (text.includes('bloom')) { const b = text.match(/bloom\s*(\d*\.?\d*)/); if (b && b[1]) bloomStr = parseFloat(b[1]); }
+  bloom.strength = bloomStr;
+  buildParticles(count, mode);
+  document.getElementById('cmd').value = '';
+});
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  if (particles) particles.rotation.y += 0.002;
+  controls.update();
+  composer.render();
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  composer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
